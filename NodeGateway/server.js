@@ -119,4 +119,71 @@ app.post('/upload', upload.single('image'), async (req, res) => {
   }
 });
 
+// POST /search
+app.post('/search', upload.single('image'), async (req, res) => {
+  try {
+    const { lat, lon } = req.body;
+    const file = req.file;
+
+    if (!file || !lat || !lon) {
+      return res.status(400).json({ error: 'Missing image, lat, or lon' });
+    }
+
+    console.log(`Search request received. Lat: ${lat}, Lon: ${lon}, File: ${file.filename}`);
+
+    // Geo-Filter: Find images within 5 meters
+    const nearbyImages = await Image.find({
+      location: {
+        $near: {
+          $geometry: { type: "Point", coordinates: [parseFloat(lon), parseFloat(lat)] },
+          $maxDistance: 1000 // meters
+        }
+      }
+    });
+
+    console.log(`Found ${nearbyImages.length} nearby images.`);
+
+    // Extract kdTreeIds, filtering out images without one
+    const treeIds = nearbyImages
+      .map(img => img.kdTreeId)
+      .filter(id => id);
+
+    if (treeIds.length === 0) {
+      console.log('No nearby images have valid kdTreeIds.');
+      return res.json([]); // No potential matches
+    }
+
+    // Call Flask Service
+    const flaskServiceUrl = 'http://flask_cv:5000/search';
+    const flaskPayload = {
+      filename: file.filename,
+      tree_ids: treeIds
+    };
+
+    console.log(`Calling Flask search at ${flaskServiceUrl} with ${treeIds.length} tree IDs.`);
+    const flaskResponse = await axios.post(flaskServiceUrl, flaskPayload);
+    const { keypointIds } = flaskResponse.data; // Expecting { keypointIds: [1, 2, ...] }
+
+    console.log(`Flask returned ${keypointIds ? keypointIds.length : 0} matching keypoint IDs.`);
+
+    if (!keypointIds || keypointIds.length === 0) {
+      return res.json([]);
+    }
+
+    // Query Mongo for Annotations
+    const annotations = await Annotation.find({
+      keypointId: { $in: keypointIds }
+    });
+
+    console.log(`Found ${annotations.length} annotations.`);
+
+    // Return Annotations
+    res.json(annotations);
+
+  } catch (error) {
+    console.error('Error processing search:', error);
+    res.status(500).json({ error: 'Internal Server Error', details: error.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
