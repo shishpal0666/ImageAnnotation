@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'screens/annotation_screen.dart';
 
 List<CameraDescription> cameras = [];
 
@@ -118,30 +119,6 @@ class _CameraScreenState extends State<CameraScreen> {
           }
         },
         child: const Icon(Icons.camera),
-      ),
-    );
-  }
-}
-
-class AnnotationScreen extends StatelessWidget {
-  final String imagePath;
-
-  const AnnotationScreen({super.key, required this.imagePath});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Annotation')),
-      body: Column(
-        children: [
-          Expanded(
-            child: Image.file(File(imagePath)),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text("Tap on the image to annotate (Logic to be implemented)"),
-          ),
-        ],
       ),
     );
   }
