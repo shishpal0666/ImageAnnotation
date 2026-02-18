@@ -5,12 +5,19 @@ import joblib
 from sklearn.neighbors import KDTree
 import random
 
-def extract_features(image_path):
-    print(f"Extracting features from {image_path}")
+def extract_features(image_path, center_crop=False):
+    print(f"Extracting features from {image_path} (Crop: {center_crop})")
     image = cv2.imread(image_path)
     if image is None:
         raise ValueError(f"Could not load image at {image_path}")
-        
+    
+    if center_crop:
+        h, w = image.shape[:2]
+        # Take central 50%
+        crop_h, crop_w = int(h * 0.5), int(w * 0.5)
+        start_y, start_x = int(h * 0.25), int(w * 0.25)
+        image = image[start_y:start_y+crop_h, start_x:start_x+crop_w]
+
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     
     sift = cv2.SIFT_create()
