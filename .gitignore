@@ -1,0 +1,5 @@
+node_modules/
+venv/
+.dart_tool/
+.idea/
+*.pyc
