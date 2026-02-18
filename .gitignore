@@ -3,3 +3,4 @@ venv/
 .dart_tool/
 .idea/
 *.pyc
+*.env

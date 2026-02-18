@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  node_gateway:
+    build: ./NodeGateway
+    env_file: 
+      - .env
+    ports:
+      - "3000:3000"
+
+  flask_cv:
+    build: ./FlaskCV
+    ports:
+      - "5000:5000"
+
+  flutter_app:
+    build: ./FlutterApp
+    ports:
+      - "8080:80"
