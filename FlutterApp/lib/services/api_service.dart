@@ -2,11 +2,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:camera/camera.dart'; // For XFile
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../models/annotation_result.dart';
 
 class ApiService {
   // Use 10.0.2.2 for Android Emulator, localhost for Web
-  // Note: On Web, localhost refers to the browser's machine.
-  // If running in Docker, NodeGateway is at localhost:3000 mapped to host.
   static String get baseUrl {
     if (kIsWeb) return 'http://localhost:3000';
     return 'http://10.0.2.2:3000';
@@ -53,7 +52,7 @@ class ApiService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> searchImage({
+  Future<List<AnnotationResult>> searchImage({
     required XFile image,
     required double lat,
     required double lon,
@@ -80,7 +79,7 @@ class ApiService {
         var responseData = await response.stream.bytesToString();
         List<dynamic> jsonResponse = jsonDecode(responseData);
         
-        return jsonResponse.map((item) => item as Map<String, dynamic>).toList();
+        return jsonResponse.map((item) => AnnotationResult.fromJson(item)).toList();
       } else {
         print("Search failed: ${response.statusCode}");
         return [];

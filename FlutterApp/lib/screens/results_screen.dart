@@ -1,97 +1,65 @@
-import 'package:flutter/material.dart';
-import 'package:camera/camera.dart'; // For XFile
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:camera/camera.dart'; // For XFile
+import '../models/annotation_result.dart';
 
-class ResultsScreen extends StatefulWidget {
-  final XFile queryImage;
-  final List<Map<String, dynamic>> results;
+class ResultsScreen extends StatelessWidget {
+  final XFile queryImage; // The image the user just searched with
+  final List<AnnotationResult> results; // The data from Node.js
 
-  const ResultsScreen({
-    super.key,
-    required this.queryImage,
-    required this.results,
-  });
+  const ResultsScreen({Key? key, required this.queryImage, required this.results}) : super(key: key);
 
-  @override
-  State<ResultsScreen> createState() => _ResultsScreenState();
-}
-
-class _ResultsScreenState extends State<ResultsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Search Results')),
-      body: Stack(
+      body: Column(
         children: [
-          // Layer 1: Query Image
-          Positioned.fill(
-            child: kIsWeb
-                ? Image.network(widget.queryImage.path, fit: BoxFit.contain)
-                : Image.file(File(widget.queryImage.path), fit: BoxFit.contain),
+          // --- TOP HALF: IMAGE PREVIEW ---
+          Expanded(
+            flex: 1, // Takes up 50% of the screen
+            child: Container(
+              width: double.infinity,
+              color: Colors.black12,
+              child: kIsWeb
+                  // On Flutter Web, we use Image.network for XFile paths
+                  ? Image.network(queryImage.path, fit: BoxFit.contain)
+                  // On Mobile, we use Image.file
+                  : Image.file(File(queryImage.path), fit: BoxFit.contain),
+            ),
           ),
           
-          // Layer 2: List View
-          DraggableScrollableSheet(
-            initialChildSize: 0.3,
-            minChildSize: 0.1,
-            maxChildSize: 0.6,
-            builder: (BuildContext context, ScrollController scrollController) {
-              return Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 10,
-                      offset: Offset(0, -5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 10),
-                    Container(
-                      width: 50,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: widget.results.isEmpty
-                          ? const Center(child: Text("No matches found."))
-                          : ListView.builder(
-                              controller: scrollController,
-                              itemCount: widget.results.length,
-                              itemBuilder: (context, index) {
-                                final result = widget.results[index];
-                                final desc = result['description'] ?? 'No description';
-                                final coords = result['coordinates'];
-                                final x = coords != null ? coords['x'] : '?';
-                                final y = coords != null ? coords['y'] : '?';
+          // --- BOTTOM HALF: RESULTS & DISTANCES ---
+          Expanded(
+            flex: 1, // Takes up the remaining 50%
+            child: results.isEmpty
+                ? const Center(child: Text("No matching annotations found."))
+                : ListView.builder(
+                    itemCount: results.length,
+                    itemBuilder: (context, index) {
+                      final res = results[index];
+                      
+                      // Optional: Color code the distance (Lower is better)
+                      Color scoreColor = res.distance < 150 ? Colors.green : Colors.orange;
 
-                                return ListTile(
-                                  leading: CircleAvatar(
-                                    child: Text("${index + 1}"),
-                                  ),
-                                  title: Text(desc),
-                                  subtitle: Text("Located at ($x, $y)"),
-                                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                ),
-              );
-            },
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: ListTile(
+                          leading: const Icon(Icons.location_on, color: Colors.blue),
+                          title: Text(
+                            res.description,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text('Distance Score: ${res.distance.toStringAsFixed(2)}'),
+                          trailing: Icon(
+                            res.distance < 150 ? Icons.check_circle : Icons.warning,
+                            color: scoreColor,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
