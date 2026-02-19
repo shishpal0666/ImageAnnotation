@@ -44,22 +44,34 @@ class ResultsScreen extends StatelessWidget {
                       // Optional: Color code the distance (Lower is better)
                       Color scoreColor = res.distance < 150 ? Colors.green : Colors.orange;
 
-                      // Debug URL
-                      print('Trying to load image from: ${ApiService.baseUrl}${res.imageUrl}');
+                      // Correct Logic for Image URL
+                      final String? rawUrl = res.imageUrl;
+                      final String finalUrl;
+                      if (rawUrl != null && rawUrl.trim().startsWith('http')) {
+                        finalUrl = rawUrl.trim();
+                      } else if (rawUrl != null) {
+                        finalUrl = '${ApiService.baseUrl}$rawUrl';
+                      } else {
+                        finalUrl = ''; // Handle null properly
+                      }
+
+                      // Debug Print - SHOW THE TRUTH
+                      print('Raw URL from Backend: $rawUrl');
+                      print('Final URL for Image.network: $finalUrl');
 
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         child: ListTile(
-                          leading: res.imageUrl != null 
+                          leading: finalUrl.isNotEmpty
                               ? Image.network(
-                                  // Fix: Check if the URL is already absolute (starts with http)
-                                  res.imageUrl!.startsWith('http')
-                                      ? res.imageUrl!
-                                      : '${ApiService.baseUrl}${res.imageUrl}',
+                                  finalUrl,
                                   width: 60,
                                   height: 60,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image),
+                                  errorBuilder: (context, error, stackTrace) {
+                                    print('Error loading image: $error');
+                                    return const Icon(Icons.broken_image);
+                                  },
                                 )
                               : const Icon(Icons.image_not_supported, size: 60),
                           title: Text(

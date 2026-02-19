@@ -32,7 +32,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // 2. THIS MUST BE SECOND!
-// 2. THIS MUST BE SECOND!
 app.use(
   "/uploads",
   express.static(path.join(__dirname, "uploads"), {

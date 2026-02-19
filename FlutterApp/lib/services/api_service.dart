@@ -28,10 +28,15 @@ class ApiService {
     request.fields['annotationsData'] = annotationsJson;
 
     if (kIsWeb) {
+      String filename = image.name;
+      if (filename.isEmpty || filename == 'image_picker_camera_image' || filename == 'scaled_image_picker_camera_image') {
+        filename = 'camera_capture_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      }
+
       request.files.add(http.MultipartFile.fromBytes(
         'image',
         await image.readAsBytes(),
-        filename: image.name,
+        filename: filename,
       ));
     } else {
       request.files.add(await http.MultipartFile.fromPath('image', image.path));
@@ -69,10 +74,15 @@ class ApiService {
     request.fields['description'] = description;
 
     if (kIsWeb) {
+      String filename = image.name;
+      if (filename.isEmpty || filename == 'image_picker_camera_image' || filename == 'scaled_image_picker_camera_image') {
+        filename = 'camera_capture_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      }
+
       request.files.add(http.MultipartFile.fromBytes(
         'image',
         await image.readAsBytes(),
-        filename: image.name,
+        filename: filename,
       ));
     } else {
       request.files.add(await http.MultipartFile.fromPath('image', image.path));
@@ -104,10 +114,15 @@ class ApiService {
     request.fields['lon'] = lon.toString();
 
     if (kIsWeb) {
+      String filename = image.name;
+      if (filename.isEmpty || filename == 'image_picker_camera_image' || filename == 'scaled_image_picker_camera_image') {
+        filename = 'camera_capture_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      }
+
       request.files.add(http.MultipartFile.fromBytes(
         'image',
         await image.readAsBytes(),
-        filename: image.name,
+        filename: filename,
       ));
     } else {
       request.files.add(await http.MultipartFile.fromPath('image', image.path));

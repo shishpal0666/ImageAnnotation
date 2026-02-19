@@ -15,6 +15,9 @@ class AnnotationResult {
     String? parsedUrl = json['imageUrl'];
     if (parsedUrl == 'null' || parsedUrl == null) {
       parsedUrl = null;
+    } else {
+      // Safety: If the URL is already absolute, keep it. 
+      // The UI will handle it correctly now.
     }
 
     return AnnotationResult(

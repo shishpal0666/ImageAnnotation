@@ -88,6 +88,7 @@ class _CameraScreenState extends State<CameraScreen> {
   final ImagePicker _picker = ImagePicker();
   bool _isCameraAvailable = false;
   final ApiService _apiService = ApiService();
+  CameraDevice _selectedCamera = CameraDevice.rear;
 
   String? _errorMessage;
 
@@ -164,8 +165,63 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  Future<Position?> _getMandatoryLocation() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // 1. Check if the phone's GPS is actually turned on
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location services are disabled. Please turn on GPS.')),
+      );
+      return null; // Stop here
+    }
+
+    // 2. Check the app's permission status
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      // 3. Ask the user for permission
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (!mounted) return null;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location permission is mandatory to use this app.')),
+        );
+        return null; // Stop here
+      }
+    }
+    
+    if (permission == LocationPermission.deniedForever) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location permissions are permanently denied, we cannot request permissions.')),
+      );
+      return null; // Stop here
+    } 
+
+    // 4. If everything is approved, get the exact coordinates!
+    return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+  }
+
   Future<void> _pickImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    // 1. Force the location check FIRST
+    Position? userLocation = await _getMandatoryLocation();
+    
+    // 2. If they denied it, userLocation is null, so we abort.
+    if (userLocation == null) return; 
+
+    // TODO: Pass this location to the next screen or API service?
+    // For now, we just print it as per instructions, but ideally we'd store it.
+    print("User Location: ${userLocation.latitude}, ${userLocation.longitude}");
+
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      maxHeight: 800,
+      imageQuality: 70,
+    );
     if (image != null) {
       if (!mounted) return;
       await _processImage(image);
@@ -217,19 +273,56 @@ class _CameraScreenState extends State<CameraScreen> {
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-           FloatingActionButton(
-            heroTag: "gallery",
-            onPressed: _pickImage,
-            child: const Icon(Icons.photo_library),
+          FloatingActionButton(
+            heroTag: "toggle",
+            mini: true,
+            backgroundColor: Colors.grey,
+            onPressed: () {
+              setState(() {
+                _selectedCamera = _selectedCamera == CameraDevice.rear 
+                    ? CameraDevice.front 
+                    : CameraDevice.rear;
+              });
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(_selectedCamera == CameraDevice.rear 
+                      ? 'Switched to Back Camera' 
+                      : 'Switched to Front Camera'),
+                  duration: const Duration(milliseconds: 500),
+                ),
+              );
+            },
+            child: Icon(
+              _selectedCamera == CameraDevice.rear 
+                  ? Icons.camera_front 
+                  : Icons.camera_rear,
+            ),
           ),
           const SizedBox(height: 16),
           FloatingActionButton(
             heroTag: "camera",
             onPressed: () async {
+              // 1. Force the location check FIRST
+              Position? userLocation = await _getMandatoryLocation();
+              
+              // 2. If they denied it, userLocation is null, so we abort.
+              if (userLocation == null) return; 
+
               try {
-                final image = await controller!.takePicture();
-                if (!mounted) return;
-                await _processImage(image);
+                // Use image_picker for robust mobile web capture with toggle support
+                final XFile? image = await _picker.pickImage(
+                  source: ImageSource.camera,
+                  preferredCameraDevice: _selectedCamera,
+                  maxWidth: 800,
+                  maxHeight: 800,
+                  imageQuality: 70,
+                );
+                
+                if (image != null) {
+                  if (!mounted) return;
+                  await _processImage(image);
+                }
               } catch (e) {
                 print(e);
               }
