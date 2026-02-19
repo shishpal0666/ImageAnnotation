@@ -230,46 +230,48 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // If camera is not available or not initialized, show Pick Image button
+    // Determine if we show the camera preview or the fallback UI
+    Widget bodyContent;
     if (!_isCameraAvailable || controller == null || !controller!.value.isInitialized) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Select Image')),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 50, color: Colors.orange),
-              const SizedBox(height: 10),
-              const Text(
-                "Camera unavailable on this browser.",
-                style: TextStyle(fontSize: 16),
+      bodyContent = Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 50, color: Colors.orange),
+            const SizedBox(height: 10),
+            const Text(
+              "Camera preview unavailable.",
+              style: TextStyle(fontSize: 16),
+            ),
+            const Text(
+              "Use the buttons below to take a photo.",
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            if (_errorMessage != null)
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Colors.red, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
               ),
-              if (_errorMessage != null)
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(
-                    _errorMessage!,
-                    style: const TextStyle(color: Colors.red, fontSize: 12),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              const SizedBox(height: 20),
-              if (!_isCameraAvailable)
-                ElevatedButton.icon(
-                  onPressed: _pickImage,
-                  icon: const Icon(Icons.upload_file),
-                  label: const Text("Upload Image Instead"),
-                ),
-               if (_isCameraAvailable) // Still initializing or just failed but flag not set yet
-                 const CircularProgressIndicator(),
-            ],
-          ),
+            const SizedBox(height: 20),
+            // We can keep a big button here too, or rely on FABs.
+            if (_isCameraAvailable) 
+               const CircularProgressIndicator(),
+          ],
         ),
       );
+    } else {
+      bodyContent = CameraPreview(controller!);
     }
 
     return Scaffold(
-      body: CameraPreview(controller!),
+      appBar: !_isCameraAvailable || controller == null || !controller!.value.isInitialized 
+          ? AppBar(title: const Text('Select Image')) 
+          : null, // No AppBar in full screen mode
+      body: bodyContent,
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
@@ -284,6 +286,42 @@ class _CameraScreenState extends State<CameraScreen> {
                     : CameraDevice.rear;
               });
               
+              // Find the matching camera description
+              // Note: camera package uses CameraLensDirection
+              final desiredDirection = _selectedCamera == CameraDevice.rear 
+                  ? CameraLensDirection.back 
+                  : CameraLensDirection.front;
+              
+              CameraDescription? newCamera;
+              try {
+                newCamera = cameras.firstWhere((c) => c.lensDirection == desiredDirection);
+              } catch (e) {
+                // If not found, just use the first one
+                if (cameras.isNotEmpty) newCamera = cameras.first;
+              }
+
+              if (newCamera != null) {
+                _isCameraAvailable = false; // Show loading
+                controller?.dispose();
+                controller = CameraController(
+                  newCamera, 
+                  ResolutionPreset.medium,
+                  enableAudio: false,
+                );
+                
+                controller!.initialize().then((_) {
+                  if (!mounted) return;
+                  setState(() {
+                    _isCameraAvailable = true;
+                  });
+                }).catchError((Object e) {
+                   setState(() {
+                     _isCameraAvailable = false;
+                     _errorMessage = e.toString();
+                   });
+                });
+              }
+
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(_selectedCamera == CameraDevice.rear 
@@ -328,6 +366,12 @@ class _CameraScreenState extends State<CameraScreen> {
               }
             },
             child: const Icon(Icons.camera),
+          ),
+          const SizedBox(height: 16),
+          FloatingActionButton(
+            heroTag: "gallery",
+            onPressed: _pickImage,
+            child: const Icon(Icons.photo_library),
           ),
         ],
       ),
