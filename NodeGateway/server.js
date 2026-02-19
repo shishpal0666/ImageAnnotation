@@ -23,7 +23,10 @@ const app = express();
 
 // Middleware
 // 1. THIS MUST BE FIRST!
-app.use(cors({ origin: "*" }));
+const allowedOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(",")
+  : "*";
+app.use(cors({ origin: allowedOrigins }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -93,7 +96,7 @@ app.post("/upload", upload.single("image"), async (req, res) => {
     console.log(`Image metadata saved: ${savedImage._id}`);
 
     // Call Flask Service
-    const flaskServiceUrl = "http://flask_cv:5000/process";
+    const flaskServiceUrl = `${process.env.FLASK_API_URL || "http://flask_cv:5000"}/process`;
     console.log(`Calling Flask service at ${flaskServiceUrl}`);
 
     // Flask expects: { filename: "...", x: 123, y: 456 }
@@ -179,7 +182,7 @@ app.post("/search", upload.single("image"), async (req, res) => {
     }
 
     // Call Flask Service
-    const flaskServiceUrl = "http://flask_cv:5000/search";
+    const flaskServiceUrl = `${process.env.FLASK_API_URL || "http://flask_cv:5000"}/search`;
     const flaskPayload = {
       filename: file.filename,
       tree_ids: treeIds,
@@ -210,6 +213,10 @@ app.post("/search", upload.single("image"), async (req, res) => {
     const imageIds = annotations.map((a) => a.imageId);
     const matchedImages = await Image.find({ _id: { $in: imageIds } });
 
+    // Dynamic Base URL
+    const baseUrl =
+      process.env.BACKEND_PUBLIC_URL || `http://localhost:${PORT}`;
+
     // Re-sort annotations based on Flask's score order and add imageUrl
     const sortedAnnotations = matches
       .map((match) => {
@@ -221,10 +228,10 @@ app.post("/search", upload.single("image"), async (req, res) => {
           (img) => img._id.toString() === annotation.imageId.toString(),
         );
 
-        // Use relative path so client can prepend baseUrl
+        // Use relative path with dynamic base URL
         const imageUrl =
           imageRecord && imageRecord.filename
-            ? `/uploads/${imageRecord.filename}`
+            ? `${baseUrl}/uploads/${imageRecord.filename}`
             : null;
 
         return {
@@ -267,9 +274,11 @@ app.post("/bulk-annotate", upload.single("image"), async (req, res) => {
     let savedAnnotations = [];
 
     // 3. Loop through the array of annotations
+    const flaskServiceUrl = `${process.env.FLASK_API_URL || "http://flask_cv:5000"}/process`;
+
     for (const ann of annotationsData) {
       // Call Flask for EACH tap coordinate to get the unique keypoint vectors
-      const flaskResponse = await axios.post("http://flask_cv:5000/process", {
+      const flaskResponse = await axios.post(flaskServiceUrl, {
         filename: req.file.filename,
         x: ann.x,
         y: ann.y,

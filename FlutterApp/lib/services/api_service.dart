@@ -6,10 +6,12 @@ import '../models/annotation_result.dart';
 
 class ApiService {
   // Use 10.0.2.2 for Android Emulator, localhost for Web
-  static String get baseUrl {
-    if (kIsWeb) return 'http://localhost:3000';
-    return 'http://10.0.2.2:3000';
-  }
+  // This looks for a variable passed during the build command. 
+  // If not found, it defaults to localhost for local testing.
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL', 
+    defaultValue: 'http://localhost:3000'
+  );
 
   // NEW: Submit Batch Annotations
   Future<bool> submitBatchAnnotations({
