@@ -114,9 +114,7 @@ class _CameraScreenState extends State<CameraScreen> {
         });
       });
     } else {
-      setState(() {
-        _isCameraAvailable = false;
-      });
+      _isCameraAvailable = false;
     }
   }
 

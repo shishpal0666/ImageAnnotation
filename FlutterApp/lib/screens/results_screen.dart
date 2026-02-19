@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart'; // For XFile
 import '../models/annotation_result.dart';
+import '../services/api_service.dart';
 
 class ResultsScreen extends StatelessWidget {
   final XFile queryImage; // The image the user just searched with
@@ -43,10 +44,22 @@ class ResultsScreen extends StatelessWidget {
                       // Optional: Color code the distance (Lower is better)
                       Color scoreColor = res.distance < 150 ? Colors.green : Colors.orange;
 
+                      // Debug URL
+                      print('Trying to load image from: ${ApiService.baseUrl}${res.imageUrl}');
+
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         child: ListTile(
-                          leading: const Icon(Icons.location_on, color: Colors.blue),
+                          leading: res.imageUrl != null 
+                              ? Image.network(
+                                  // Construct full URL using ApiService.baseUrl + relative path
+                                  '${ApiService.baseUrl}${res.imageUrl}',
+                                  width: 60,
+                                  height: 60,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image),
+                                )
+                              : const Icon(Icons.image_not_supported, size: 60),
                           title: Text(
                             res.description,
                             style: const TextStyle(fontWeight: FontWeight.bold),

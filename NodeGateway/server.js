@@ -22,9 +22,23 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 
 // Middleware
-app.use(cors());
+// 1. THIS MUST BE FIRST!
+app.use(cors({ origin: "*" }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// 2. THIS MUST BE SECOND!
+app.use(
+  "/uploads",
+  express.static("/app/uploads", {
+    // Add these headers to explicitly allow Flutter to read the image bytes
+    setHeaders: function (res, path, stat) {
+      res.set("Access-Control-Allow-Origin", "*");
+      res.set("Cross-Origin-Resource-Policy", "cross-origin");
+    },
+  }),
+);
 
 // Ensure upload directory exists
 const uploadDir = "/app/uploads";
@@ -192,13 +206,32 @@ app.post("/search", upload.single("image"), async (req, res) => {
 
     console.log(`Found ${annotations.length} annotations in DB.`);
 
-    // Re-sort annotations based on Flask's score order
+    // Fetch parent Image documents
+    const imageIds = annotations.map((a) => a.imageId);
+    const matchedImages = await Image.find({ _id: { $in: imageIds } });
+
+    // Re-sort annotations based on Flask's score order and add imageUrl
     const sortedAnnotations = matches
       .map((match) => {
         const annotation = annotations.find((a) => a.keypointId == match.id);
-        return annotation
-          ? { ...annotation.toObject(), score: match.score }
-          : null;
+        if (!annotation) return null;
+
+        // CRITICAL FIX: Use .toString() to guarantee the IDs match properly
+        const imageRecord = matchedImages.find(
+          (img) => img._id.toString() === annotation.imageId.toString(),
+        );
+
+        // Use relative path so client can prepend baseUrl
+        const imageUrl =
+          imageRecord && imageRecord.filename
+            ? `/uploads/${imageRecord.filename}`
+            : null;
+
+        return {
+          ...annotation.toObject(),
+          score: match.score,
+          imageUrl: imageUrl,
+        };
       })
       .filter((item) => item !== null);
 
