@@ -245,4 +245,65 @@ app.post("/search", upload.single("image"), async (req, res) => {
   }
 });
 
+// NEW ROUTE: Bulk Annotate
+app.post("/bulk-annotate", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No image provided" });
+
+    // 1. Parse the JSON string sent from Flutter
+    const annotationsData = JSON.parse(req.body.annotationsData);
+
+    // 2. Save the Image to MongoDB ONCE
+    const newImage = new Image({
+      filename: req.file.filename,
+      location: {
+        type: "Point",
+        coordinates: [parseFloat(req.body.lon), parseFloat(req.body.lat)],
+      },
+    });
+    await newImage.save();
+
+    let finalTreeId = null;
+    let savedAnnotations = [];
+
+    // 3. Loop through the array of annotations
+    for (const ann of annotationsData) {
+      // Call Flask for EACH tap coordinate to get the unique keypoint vectors
+      const flaskResponse = await axios.post("http://flask_cv:5000/process", {
+        filename: req.file.filename,
+        x: ann.x,
+        y: ann.y,
+      });
+
+      const { keypointId, treeId } = flaskResponse.data;
+      if (treeId) finalTreeId = treeId; // Update the tree ID (they will all go to the same tree)
+
+      // Save each Annotation to MongoDB
+      const newAnnotation = new Annotation({
+        imageId: newImage._id, // Link to the parent image we just saved
+        keypointId: keypointId,
+        description: ann.description,
+        coordinates: { x: ann.x, y: ann.y },
+      });
+      await newAnnotation.save();
+      savedAnnotations.push(newAnnotation);
+    }
+
+    // 4. Update the parent Image with the final KD-Tree ID
+    if (finalTreeId) {
+      newImage.kdTreeId = finalTreeId;
+      await newImage.save();
+    }
+
+    res.json({
+      status: "success",
+      message: `Processed 1 image and ${savedAnnotations.length} annotations`,
+      imageId: newImage._id,
+    });
+  } catch (err) {
+    console.error("Bulk Annotate Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

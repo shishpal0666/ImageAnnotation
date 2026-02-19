@@ -89,28 +89,27 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isCameraAvailable = false;
   final ApiService _apiService = ApiService();
 
+  String? _errorMessage;
+
   @override
   void initState() {
     super.initState();
     if (cameras.isNotEmpty) {
       _isCameraAvailable = true;
-      controller = CameraController(cameras[0], ResolutionPreset.medium);
+      // CRITICAL FIX: Use ResolutionPreset.medium (High/Max crashes Web)
+      controller = CameraController(
+        cameras[0], 
+        ResolutionPreset.medium,
+        enableAudio: false, // Turn off audio
+      );
       controller!.initialize().then((_) {
         if (!mounted) return;
         setState(() {});
       }).catchError((Object e) {
-        if (e is CameraException) {
-          switch (e.code) {
-            case 'CameraAccessDenied':
-              print('User denied camera access.');
-              break;
-            default:
-              print('Handle other errors.');
-              break;
-          }
-        }
+        // Handle camera errors gracefully
         setState(() {
           _isCameraAvailable = false;
+          _errorMessage = e.toString();
         });
       });
     } else {
@@ -183,15 +182,29 @@ class _CameraScreenState extends State<CameraScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text("Camera not available or initializing..."),
+              const Icon(Icons.error_outline, size: 50, color: Colors.orange),
+              const SizedBox(height: 10),
+              const Text(
+                "Camera unavailable on this browser.",
+                style: TextStyle(fontSize: 16),
+              ),
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    _errorMessage!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               const SizedBox(height: 20),
               if (!_isCameraAvailable)
                 ElevatedButton.icon(
                   onPressed: _pickImage,
-                  icon: const Icon(Icons.photo_library),
-                  label: const Text("Pick from Gallery"),
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text("Upload Image Instead"),
                 ),
-               if (_isCameraAvailable) // Still initializing
+               if (_isCameraAvailable) // Still initializing or just failed but flag not set yet
                  const CircularProgressIndicator(),
             ],
           ),

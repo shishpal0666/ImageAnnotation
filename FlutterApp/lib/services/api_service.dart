@@ -11,6 +11,44 @@ class ApiService {
     return 'http://10.0.2.2:3000';
   }
 
+  // NEW: Submit Batch Annotations
+  Future<bool> submitBatchAnnotations({
+    required XFile image,
+    required double lat,
+    required double lon,
+    required String annotationsJson, // JSON String of List<LocalAnnotation>
+  }) async {
+    final uri = Uri.parse('$baseUrl/bulk-annotate');
+    var request = http.MultipartRequest('POST', uri);
+
+    request.fields['lat'] = lat.toString();
+    request.fields['lon'] = lon.toString();
+    request.fields['annotationsData'] = annotationsJson;
+
+    if (kIsWeb) {
+      request.files.add(http.MultipartFile.fromBytes(
+        'image',
+        await image.readAsBytes(),
+        filename: image.name,
+      ));
+    } else {
+      request.files.add(await http.MultipartFile.fromPath('image', image.path));
+    }
+
+    try {
+      var response = await request.send();
+      if (response.statusCode == 200) { // Success is usually 200 OK
+        return true;
+      } else {
+        print('Batch upload failed with status: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print("Error uploading batch: $e");
+      return false;
+    }
+  }
+
   Future<void> uploadAnnotation({
     required XFile image,
     required double lat,
