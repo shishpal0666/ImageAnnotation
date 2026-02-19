@@ -32,9 +32,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // 2. THIS MUST BE SECOND!
+// 2. THIS MUST BE SECOND!
 app.use(
   "/uploads",
-  express.static("/app/uploads", {
+  express.static(path.join(__dirname, "uploads"), {
     // Add these headers to explicitly allow Flutter to read the image bytes
     setHeaders: function (res, path, stat) {
       res.set("Access-Control-Allow-Origin", "*");
@@ -44,7 +45,7 @@ app.use(
 );
 
 // Ensure upload directory exists
-const uploadDir = "/app/uploads";
+const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) {
   try {
     fs.mkdirSync(uploadDir, { recursive: true });

@@ -52,8 +52,10 @@ class ResultsScreen extends StatelessWidget {
                         child: ListTile(
                           leading: res.imageUrl != null 
                               ? Image.network(
-                                  // Construct full URL using ApiService.baseUrl + relative path
-                                  '${ApiService.baseUrl}${res.imageUrl}',
+                                  // Fix: Check if the URL is already absolute (starts with http)
+                                  res.imageUrl!.startsWith('http')
+                                      ? res.imageUrl!
+                                      : '${ApiService.baseUrl}${res.imageUrl}',
                                   width: 60,
                                   height: 60,
                                   fit: BoxFit.cover,
