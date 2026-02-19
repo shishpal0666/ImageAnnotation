@@ -1,28 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart'; // For XFile
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import '../services/api_service.dart'; // Import ApiService
 
 class AnnotationScreen extends StatefulWidget {
-  final String imagePath;
+  final XFile image;
 
-  const AnnotationScreen({super.key, required this.imagePath});
+  const AnnotationScreen({super.key, required this.image});
 
   @override
   State<AnnotationScreen> createState() => _AnnotationScreenState();
 }
 
 class _AnnotationScreenState extends State<AnnotationScreen> {
-  // Store annotations as a list of temporary markers for UI feedback
-  // In a real app, these might come from the server or be stored locally
   List<Map<String, dynamic>> annotations = [];
+  final ApiService _apiService = ApiService();
 
   void _handleTapUp(TapUpDetails details) {
-    // Get local coordinates relative to the image widget
-    // Note: This assumes the image fits the screen or the widget size matches the image aspect ratio.
-    // In production, you'd need to map widget coordinates to actual image pixel coordinates.
-    // For this prototype, we'll send widget coordinates and let the backend/frontend logic align.
-    // However, the backend expects pixel coordinates if we are doing SIFT.
-    // Let's assume for now we just capture what we can.
-    
     double x = details.localPosition.dx;
     double y = details.localPosition.dy;
 
@@ -69,7 +64,22 @@ class _AnnotationScreenState extends State<AnnotationScreen> {
         });
       });
       
-      // TODO: Send to backend (NodeGateway)
+      // Upload to Backend
+      // Placeholder coordinates for Lat/Lon (Use Geolocator in production)
+      await _apiService.uploadAnnotation(
+        image: widget.image,
+        lat: 40.7128, 
+        lon: -74.0060,
+        x: x,
+        y: y,
+        description: text,
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Annotation Uploaded!")),
+        );
+      }
     }
   }
 
@@ -82,18 +92,14 @@ class _AnnotationScreenState extends State<AnnotationScreen> {
           Positioned.fill(
             child: GestureDetector(
               onTapUp: _handleTapUp,
-              child: Image.file(
-                File(widget.imagePath),
-                fit: BoxFit.contain, 
-                // Using BoxFit.contain ensures the image is visible fully.
-                // Coordinates will be relative to the Image widget's box.
-              ),
+              child: kIsWeb 
+                ? Image.network(widget.image.path, fit: BoxFit.contain)
+                : Image.file(File(widget.image.path), fit: BoxFit.contain),
             ),
           ),
-          // Display markers
           ...annotations.map((ann) {
             return Positioned(
-              left: ann['x'] - 12, // Center icon
+              left: ann['x'] - 12,
               top: ann['y'] - 12,
               child: const Icon(Icons.location_on, color: Colors.red, size: 24),
             );

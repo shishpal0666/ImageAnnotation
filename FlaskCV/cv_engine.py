@@ -123,16 +123,34 @@ def build_and_query_tree(tree_paths, query_descriptors, ratio_thresh=0.75):
     
     dists, inds = tree.query(query_descriptors, k=k)
 
+    matches = []
+    
     for i in range(len(query_descriptors)):
+        match_found = False
+        distance = dists[i][0]
+        
         if k == 2:
             # Lowe's Ratio Test
-            if dists[i][0] < ratio_thresh * dists[i][1]:
-                global_id = all_ids[inds[i][0]]
-                matched_ids.append(global_id)
+            if distance < ratio_thresh * dists[i][1]:
+                match_found = True
         elif k == 1:
-            # Simple threshold?
-            if dists[i][0] < 200: # Arbitrary threshold for SIFT distance
-                 global_id = all_ids[inds[i][0]]
-                 matched_ids.append(global_id)
+            # Simple threshold
+            if distance < 200:
+                 match_found = True
+        
+        if match_found:
+            global_id = all_ids[inds[i][0]]
+            matches.append({'id': global_id, 'score': float(distance)})
 
-    return list(set(matched_ids))
+    # Sort by distance (lowest is best)
+    matches.sort(key=lambda x: x['score'])
+
+    # Deduplicate (keep best score for each ID)
+    unique_matches = []
+    seen_ids = set()
+    for m in matches:
+        if m['id'] not in seen_ids:
+            seen_ids.add(m['id'])
+            unique_matches.append(m)
+
+    return unique_matches

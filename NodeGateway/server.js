@@ -1,15 +1,15 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
-const cors = require('cors');
-const multer = require('multer');
-const axios = require('axios');
-const path = require('path');
-const fs = require('fs');
+const express = require("express");
+const mongoose = require("mongoose");
+const dotenv = require("dotenv");
+const cors = require("cors");
+const multer = require("multer");
+const axios = require("axios");
+const path = require("path");
+const fs = require("fs");
 
-const connectDB = require('./database');
-const Image = require('./models/Image');
-const Annotation = require('./models/Annotation');
+const connectDB = require("./database");
+const Image = require("./models/Image");
+const Annotation = require("./models/Annotation");
 
 // Load env vars
 dotenv.config();
@@ -27,7 +27,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Ensure upload directory exists
-const uploadDir = '/app/uploads';
+const uploadDir = "/app/uploads";
 if (!fs.existsSync(uploadDir)) {
   try {
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -44,23 +44,23 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     // Unique filename to prevent overwrites
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
+  },
 });
 
 const upload = multer({ storage: storage });
 
 // Routes
 // POST /upload
-app.post('/upload', upload.single('image'), async (req, res) => {
+app.post("/upload", upload.single("image"), async (req, res) => {
   try {
-    console.log('Received upload request');
+    console.log("Received upload request");
     const { lat, lon, x, y, description } = req.body;
     const file = req.file;
 
     if (!file) {
-      return res.status(400).json({ error: 'No image file uploaded' });
+      return res.status(400).json({ error: "No image file uploaded" });
     }
 
     console.log(`File saved: ${file.filename}`);
@@ -69,9 +69,9 @@ app.post('/upload', upload.single('image'), async (req, res) => {
     const newImage = new Image({
       filename: file.filename,
       location: {
-        type: 'Point',
-        coordinates: [parseFloat(lon), parseFloat(lat)] // GeoJSON: [Longitude, Latitude]
-      }
+        type: "Point",
+        coordinates: [parseFloat(lon), parseFloat(lat)], // GeoJSON: [Longitude, Latitude]
+      },
       // kdTreeId: TODO: Assign later or receive from client?
     });
 
@@ -79,27 +79,34 @@ app.post('/upload', upload.single('image'), async (req, res) => {
     console.log(`Image metadata saved: ${savedImage._id}`);
 
     // Call Flask Service
-    const flaskServiceUrl = 'http://flask_cv:5000/process';
+    const flaskServiceUrl = "http://flask_cv:5000/process";
     console.log(`Calling Flask service at ${flaskServiceUrl}`);
-    
+
     // Flask expects: { filename: "...", x: 123, y: 456 }
     const flaskPayload = {
       filename: file.filename,
       x: parseFloat(x),
-      y: parseFloat(y)
+      y: parseFloat(y),
     };
 
     const flaskResponse = await axios.post(flaskServiceUrl, flaskPayload);
-    console.log('Flask response:', flaskResponse.data);
+    console.log("Flask response:", flaskResponse.data);
 
-    const { keypointId } = flaskResponse.data;
+    const { keypointId, treeId } = flaskResponse.data;
+
+    // Update Image with kdTreeId
+    if (treeId) {
+      savedImage.kdTreeId = treeId;
+      await savedImage.save();
+      console.log(`Updated Image with kdTreeId: ${treeId}`);
+    }
 
     // Save Annotation to MongoDB
     const newAnnotation = new Annotation({
       imageId: savedImage._id,
       keypointId: keypointId,
       description: description,
-      coordinates: { x: parseFloat(x), y: parseFloat(y) }
+      coordinates: { x: parseFloat(x), y: parseFloat(y) },
     });
 
     await newAnnotation.save();
@@ -107,82 +114,101 @@ app.post('/upload', upload.single('image'), async (req, res) => {
 
     // Return Success
     res.status(201).json({
-      message: 'Success',
+      message: "Success",
       imageId: savedImage._id,
       annotationId: newAnnotation._id,
-      keypointId: keypointId
+      keypointId: keypointId,
     });
-
   } catch (error) {
-    console.error('Error processing upload:', error);
-    res.status(500).json({ error: 'Internal Server Error', details: error.message });
+    console.error("Error processing upload:", error);
+    res
+      .status(500)
+      .json({ error: "Internal Server Error", details: error.message });
   }
 });
 
 // POST /search
-app.post('/search', upload.single('image'), async (req, res) => {
+app.post("/search", upload.single("image"), async (req, res) => {
   try {
     const { lat, lon } = req.body;
     const file = req.file;
 
     if (!file || !lat || !lon) {
-      return res.status(400).json({ error: 'Missing image, lat, or lon' });
+      return res.status(400).json({ error: "Missing image, lat, or lon" });
     }
 
-    console.log(`Search request received. Lat: ${lat}, Lon: ${lon}, File: ${file.filename}`);
+    console.log(
+      `Search request received. Lat: ${lat}, Lon: ${lon}, File: ${file.filename}`,
+    );
 
     // Geo-Filter: Find images within 5 meters
     const nearbyImages = await Image.find({
       location: {
         $near: {
-          $geometry: { type: "Point", coordinates: [parseFloat(lon), parseFloat(lat)] },
-          $maxDistance: 1000 // meters
-        }
-      }
+          $geometry: {
+            type: "Point",
+            coordinates: [parseFloat(lon), parseFloat(lat)],
+          },
+          $maxDistance: 1000, // meters
+        },
+      },
     });
 
     console.log(`Found ${nearbyImages.length} nearby images.`);
 
     // Extract kdTreeIds, filtering out images without one
-    const treeIds = nearbyImages
-      .map(img => img.kdTreeId)
-      .filter(id => id);
+    const treeIds = nearbyImages.map((img) => img.kdTreeId).filter((id) => id);
 
     if (treeIds.length === 0) {
-      console.log('No nearby images have valid kdTreeIds.');
+      console.log("No nearby images have valid kdTreeIds.");
       return res.json([]); // No potential matches
     }
 
     // Call Flask Service
-    const flaskServiceUrl = 'http://flask_cv:5000/search';
+    const flaskServiceUrl = "http://flask_cv:5000/search";
     const flaskPayload = {
       filename: file.filename,
-      tree_ids: treeIds
+      tree_ids: treeIds,
     };
 
-    console.log(`Calling Flask search at ${flaskServiceUrl} with ${treeIds.length} tree IDs.`);
+    console.log(
+      `Calling Flask search at ${flaskServiceUrl} with ${treeIds.length} tree IDs.`,
+    );
     const flaskResponse = await axios.post(flaskServiceUrl, flaskPayload);
-    const { keypointIds } = flaskResponse.data; // Expecting { keypointIds: [1, 2, ...] }
+    const { matches } = flaskResponse.data; // Expecting { matches: [{id: 1, score: 0.1}, ...] }
 
-    console.log(`Flask returned ${keypointIds ? keypointIds.length : 0} matching keypoint IDs.`);
+    console.log(`Flask returned ${matches ? matches.length : 0} matches.`);
 
-    if (!keypointIds || keypointIds.length === 0) {
+    if (!matches || matches.length === 0) {
       return res.json([]);
     }
 
+    const keypointIds = matches.map((m) => m.id);
+
     // Query Mongo for Annotations
     const annotations = await Annotation.find({
-      keypointId: { $in: keypointIds }
+      keypointId: { $in: keypointIds },
     });
 
-    console.log(`Found ${annotations.length} annotations.`);
+    console.log(`Found ${annotations.length} annotations in DB.`);
+
+    // Re-sort annotations based on Flask's score order
+    const sortedAnnotations = matches
+      .map((match) => {
+        const annotation = annotations.find((a) => a.keypointId == match.id);
+        return annotation
+          ? { ...annotation.toObject(), score: match.score }
+          : null;
+      })
+      .filter((item) => item !== null);
 
     // Return Annotations
-    res.json(annotations);
-
+    res.json(sortedAnnotations);
   } catch (error) {
-    console.error('Error processing search:', error);
-    res.status(500).json({ error: 'Internal Server Error', details: error.message });
+    console.error("Error processing search:", error);
+    res
+      .status(500)
+      .json({ error: "Internal Server Error", details: error.message });
   }
 });
 

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart'; // For XFile
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ResultsScreen extends StatefulWidget {
-  final File queryImage;
+  final XFile queryImage;
   final List<Map<String, dynamic>> results;
 
   const ResultsScreen({
@@ -16,11 +18,6 @@ class ResultsScreen extends StatefulWidget {
 }
 
 class _ResultsScreenState extends State<ResultsScreen> {
-  // Assuming the user just wants to see the image and the list of matching annotations.
-  // The (x, y) coordinates returned from the API are relative to the original image in the DB,
-  // not this query image. Overlaying them directly might be confusing without alignment.
-  // We'll focus on the list view and potentially mark points if they are deemed useful.
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -29,13 +26,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
         children: [
           // Layer 1: Query Image
           Positioned.fill(
-            child: Image.file(
-              widget.queryImage,
-              fit: BoxFit.contain,
-            ),
+            child: kIsWeb
+                ? Image.network(widget.queryImage.path, fit: BoxFit.contain)
+                : Image.file(File(widget.queryImage.path), fit: BoxFit.contain),
           ),
           
-          // Layer 2: List View at the bottom via DraggableScrollableSheet
+          // Layer 2: List View
           DraggableScrollableSheet(
             initialChildSize: 0.3,
             minChildSize: 0.1,
@@ -86,11 +82,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                     child: Text("${index + 1}"),
                                   ),
                                   title: Text(desc),
-                                  subtitle: Text("Located at ($x, $y)"), // Display coords
+                                  subtitle: Text("Located at ($x, $y)"),
                                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                                  onTap: () {
-                                    // Highlight logic could go here if we were overlaying points
-                                  },
                                 );
                               },
                             ),

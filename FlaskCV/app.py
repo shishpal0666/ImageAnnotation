@@ -73,9 +73,9 @@ def search_image():
         # Load Trees and Query
         tree_paths = [os.path.join(TREE_FOLDER, tid) for tid in tree_ids]
         
-        matched_ids = cv_engine.build_and_query_tree(tree_paths, query_descriptors)
+        matches = cv_engine.build_and_query_tree(tree_paths, query_descriptors)
 
-        return jsonify({'keypointIds': matched_ids})
+        return jsonify({'matches': matches})
 
     except Exception as e:
         print(f"Error in /search: {e}")

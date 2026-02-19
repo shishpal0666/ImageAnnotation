@@ -1,13 +1,19 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:camera/camera.dart'; // For XFile
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ApiService {
-  // Use 10.0.2.2 for Android Emulator to access host localhost
-  static const String baseUrl = 'http://10.0.2.2:3000';
+  // Use 10.0.2.2 for Android Emulator, localhost for Web
+  // Note: On Web, localhost refers to the browser's machine.
+  // If running in Docker, NodeGateway is at localhost:3000 mapped to host.
+  static String get baseUrl {
+    if (kIsWeb) return 'http://localhost:3000';
+    return 'http://10.0.2.2:3000';
+  }
 
   Future<void> uploadAnnotation({
-    required File image,
+    required XFile image,
     required double lat,
     required double lon,
     required double x,
@@ -23,7 +29,15 @@ class ApiService {
     request.fields['y'] = y.toString();
     request.fields['description'] = description;
 
-    request.files.add(await http.MultipartFile.fromPath('image', image.path));
+    if (kIsWeb) {
+      request.files.add(http.MultipartFile.fromBytes(
+        'image',
+        await image.readAsBytes(),
+        filename: image.name,
+      ));
+    } else {
+      request.files.add(await http.MultipartFile.fromPath('image', image.path));
+    }
 
     try {
       var response = await request.send();
@@ -40,7 +54,7 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> searchImage({
-    required File image,
+    required XFile image,
     required double lat,
     required double lon,
   }) async {
@@ -50,7 +64,15 @@ class ApiService {
     request.fields['lat'] = lat.toString();
     request.fields['lon'] = lon.toString();
 
-    request.files.add(await http.MultipartFile.fromPath('image', image.path));
+    if (kIsWeb) {
+      request.files.add(http.MultipartFile.fromBytes(
+        'image',
+        await image.readAsBytes(),
+        filename: image.name,
+      ));
+    } else {
+      request.files.add(await http.MultipartFile.fromPath('image', image.path));
+    }
 
     try {
       var response = await request.send();
@@ -58,7 +80,6 @@ class ApiService {
         var responseData = await response.stream.bytesToString();
         List<dynamic> jsonResponse = jsonDecode(responseData);
         
-        // Convert to List<Map<String, dynamic>>
         return jsonResponse.map((item) => item as Map<String, dynamic>).toList();
       } else {
         print("Search failed: ${response.statusCode}");
