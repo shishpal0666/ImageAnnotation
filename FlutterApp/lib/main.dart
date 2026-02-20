@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
+import 'package:camera/camera.dart'; // Still needed for XFile? Actually ImagePicker uses XFile from cross_file/image_picker.
+// But we might need camera package if we keep using CameraDescription? No, we are removing that.
+// We can remove camera package import if not used, but let's keep it if main.dart imported it.
+// Actually ImagePicker returns XFile. content of main.dart uses XFile. 
+// Standard image_picker uses XFile. 
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
@@ -9,15 +13,9 @@ import 'screens/annotation_screen.dart';
 import 'screens/results_screen.dart';
 import 'services/api_service.dart';
 
-List<CameraDescription> cameras = [];
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    cameras = await availableCameras();
-  } on CameraException catch (e) {
-    print('Error initializing camera: $e');
-  }
+  // No more camera initialization here
   runApp(const MyApp());
 }
 
@@ -36,8 +34,33 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // 1. Initial Permission Check on Home Load
+    _checkPermissions();
+  }
+
+  Future<void> _checkPermissions() async {
+    // Request Location
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    
+    // Request Camera (handled implicitly on Web by browser, but we can try to "warm up" if needed, 
+    // but usually better to wait for action. However, user asked for it "On home page".
+    // Geolocator is the critical one they mentioned for "location" specifically.
+    // We strictly enforce location in _getMandatoryLocation later too.
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,25 +71,30 @@ class HomeScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              ),
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const CameraScreen()),
+                  MaterialPageRoute(builder: (context) => const ImageSelectionScreen()),
                 );
               },
-              child: const Text('Add Annotation'),
+              child: const Text('Add Annotation', style: TextStyle(fontSize: 18)),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              ),
               onPressed: () {
                 print("Search Pressed");
-                // For now, search also goes via CameraScreen or could be a separate picker flow
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const CameraScreen(isSearch: true)),
+                  MaterialPageRoute(builder: (context) => const ImageSelectionScreen(isSearch: true)),
                 );
               },
-              child: const Text('Search'),
+              child: const Text('Search', style: TextStyle(fontSize: 18)),
             ),
           ],
         ),
@@ -75,95 +103,18 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class CameraScreen extends StatefulWidget {
+class ImageSelectionScreen extends StatefulWidget {
   final bool isSearch;
-  const CameraScreen({super.key, this.isSearch = false});
+  const ImageSelectionScreen({super.key, this.isSearch = false});
 
   @override
-  State<CameraScreen> createState() => _CameraScreenState();
+  State<ImageSelectionScreen> createState() => _ImageSelectionScreenState();
 }
 
-class _CameraScreenState extends State<CameraScreen> {
-  CameraController? controller;
+class _ImageSelectionScreenState extends State<ImageSelectionScreen> {
   final ImagePicker _picker = ImagePicker();
-  bool _isCameraAvailable = false;
   final ApiService _apiService = ApiService();
-  CameraDevice _selectedCamera = CameraDevice.rear;
-
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    if (cameras.isNotEmpty) {
-      _isCameraAvailable = true;
-      // CRITICAL FIX: Use ResolutionPreset.medium (High/Max crashes Web)
-      controller = CameraController(
-        cameras[0], 
-        ResolutionPreset.medium,
-        enableAudio: false, // Turn off audio
-      );
-      controller!.initialize().then((_) {
-        if (!mounted) return;
-        setState(() {});
-      }).catchError((Object e) {
-        // Handle camera errors gracefully
-        setState(() {
-          _isCameraAvailable = false;
-          _errorMessage = e.toString();
-        });
-      });
-    } else {
-      _isCameraAvailable = false;
-    }
-  }
-
-  @override
-  void dispose() {
-    controller?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _processImage(XFile image) async {
-    if (widget.isSearch) {
-       // Show loading indicator
-       showDialog(
-         context: context,
-         barrierDismissible: false,
-         builder: (context) => const Center(child: CircularProgressIndicator()),
-       );
-
-       try {
-         // TODO: Get real location
-         final results = await _apiService.searchImage(
-           image: image,
-           lat: 40.7128, 
-           lon: -74.0060,
-         );
-         
-         if (!mounted) return;
-         Navigator.pop(context); // Dismiss loading
-
-         Navigator.push(
-           context,
-           MaterialPageRoute(
-             builder: (context) => ResultsScreen(queryImage: image, results: results),
-           ),
-         );
-       } catch (e) {
-         if (!mounted) return;
-         Navigator.pop(context); // Dismiss loading
-         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-       }
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => AnnotationScreen(image: image),
-        ),
-      );
-    }
-  }
+  bool _isLoading = false;
 
   Future<Position?> _getMandatoryLocation() async {
     bool serviceEnabled;
@@ -176,205 +127,154 @@ class _CameraScreenState extends State<CameraScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Location services are disabled. Please turn on GPS.')),
       );
-      return null; // Stop here
+      return null;
     }
 
     // 2. Check the app's permission status
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
-      // 3. Ask the user for permission
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
         if (!mounted) return null;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Location permission is mandatory to use this app.')),
         );
-        return null; // Stop here
+        return null;
       }
     }
     
     if (permission == LocationPermission.deniedForever) {
       if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Location permissions are permanently denied, we cannot request permissions.')),
+        const SnackBar(content: Text('Location permissions are permanently denied.')),
       );
-      return null; // Stop here
+      return null;
     } 
 
-    // 4. If everything is approved, get the exact coordinates!
     return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
   }
 
-  Future<void> _pickImage() async {
-    // 1. Force the location check FIRST
-    Position? userLocation = await _getMandatoryLocation();
-    
-    // 2. If they denied it, userLocation is null, so we abort.
-    if (userLocation == null) return; 
+  Future<void> _processImage(XFile image) async {
+    if (widget.isSearch) {
+       setState(() => _isLoading = true);
+       try {
+         // TODO: Get real location (we already checked permission, we can fetch again or pass it)
+         // For now, let's fetch it again to be precise or use a cached one if we had it.
+         // Calling getCurrentPosition is fast enough if permission is granted.
+         final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+         
+         final results = await _apiService.searchImage(
+           image: image,
+           lat: position.latitude, 
+           lon: position.longitude,
+         );
+         
+         if (!mounted) return;
+         setState(() => _isLoading = false);
 
-    // TODO: Pass this location to the next screen or API service?
-    // For now, we just print it as per instructions, but ideally we'd store it.
-    print("User Location: ${userLocation.latitude}, ${userLocation.longitude}");
+         Navigator.push(
+           context,
+           MaterialPageRoute(
+             builder: (context) => ResultsScreen(queryImage: image, results: results),
+           ),
+         );
+       } catch (e) {
+         if (!mounted) return;
+         setState(() => _isLoading = false);
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+       }
+    } else {
+      // Should be cached/fast since we checked permissions
+      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AnnotationScreen(image: image, position: position),
+        ),
+      );
+    }
+  }
 
-    final XFile? image = await _picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 800,
-      maxHeight: 800,
-      imageQuality: 70,
-    );
-    if (image != null) {
-      if (!mounted) return;
-      await _processImage(image);
+  Future<void> _pickImage(ImageSource source) async {
+    // 1. Mandatory Location Check before Action
+    Position? location = await _getMandatoryLocation();
+    if (location == null) return;
+
+    print("Location Verified: ${location.latitude}, ${location.longitude}");
+
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 70,
+        // preferredCameraDevice is ignored if source is gallery
+        preferredCameraDevice: CameraDevice.rear, // Default, but native app lets user switch
+      );
+
+      if (image != null) {
+        if (!mounted) return;
+        await _processImage(image);
+      }
+    } catch (e) {
+      print("Error picking image: $e");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error picking image: $e")));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Determine if we show the camera preview or the fallback UI
-    Widget bodyContent;
-    if (!_isCameraAvailable || controller == null || !controller!.value.isInitialized) {
-      bodyContent = Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 50, color: Colors.orange),
-            const SizedBox(height: 10),
-            const Text(
-              "Camera preview unavailable.",
-              style: TextStyle(fontSize: 16),
-            ),
-            const Text(
-              "Use the buttons below to take a photo.",
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            if (_errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  _errorMessage!,
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            const SizedBox(height: 20),
-            // We can keep a big button here too, or rely on FABs.
-            if (_isCameraAvailable) 
-               const CircularProgressIndicator(),
-          ],
-        ),
-      );
-    } else {
-      bodyContent = CameraPreview(controller!);
-    }
-
     return Scaffold(
-      appBar: !_isCameraAvailable || controller == null || !controller!.value.isInitialized 
-          ? AppBar(title: const Text('Select Image')) 
-          : null, // No AppBar in full screen mode
-      body: bodyContent,
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          FloatingActionButton(
-            heroTag: "toggle",
-            mini: true,
-            backgroundColor: Colors.grey,
-            onPressed: () {
-              setState(() {
-                _selectedCamera = _selectedCamera == CameraDevice.rear 
-                    ? CameraDevice.front 
-                    : CameraDevice.rear;
-              });
-              
-              // Find the matching camera description
-              // Note: camera package uses CameraLensDirection
-              final desiredDirection = _selectedCamera == CameraDevice.rear 
-                  ? CameraLensDirection.back 
-                  : CameraLensDirection.front;
-              
-              CameraDescription? newCamera;
-              try {
-                newCamera = cameras.firstWhere((c) => c.lensDirection == desiredDirection);
-              } catch (e) {
-                // If not found, just use the first one
-                if (cameras.isNotEmpty) newCamera = cameras.first;
-              }
-
-              if (newCamera != null) {
-                _isCameraAvailable = false; // Show loading
-                controller?.dispose();
-                controller = CameraController(
-                  newCamera, 
-                  ResolutionPreset.medium,
-                  enableAudio: false,
-                );
-                
-                controller!.initialize().then((_) {
-                  if (!mounted) return;
-                  setState(() {
-                    _isCameraAvailable = true;
-                  });
-                }).catchError((Object e) {
-                   setState(() {
-                     _isCameraAvailable = false;
-                     _errorMessage = e.toString();
-                   });
-                });
-              }
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(_selectedCamera == CameraDevice.rear 
-                      ? 'Switched to Back Camera' 
-                      : 'Switched to Front Camera'),
-                  duration: const Duration(milliseconds: 500),
+      appBar: AppBar(title: Text(widget.isSearch ? 'Search Image' : 'Select Image')),
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator())
+        : Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // CAPTURE BUTTON
+                SizedBox(
+                  width: 250,
+                  height: 60,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.camera_alt, size: 30),
+                    label: const Text("Capture Photo", style: TextStyle(fontSize: 20)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => _pickImage(ImageSource.camera),
+                  ),
                 ),
-              );
-            },
-            child: Icon(
-              _selectedCamera == CameraDevice.rear 
-                  ? Icons.camera_front 
-                  : Icons.camera_rear,
+                const SizedBox(height: 30),
+                
+                // UPLOAD BUTTON
+                SizedBox(
+                  width: 250,
+                  height: 60,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.photo_library, size: 30),
+                    label: const Text("Upload from Gallery", style: TextStyle(fontSize: 20)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => _pickImage(ImageSource.gallery),
+                  ),
+                ),
+                
+                const SizedBox(height: 20),
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    "Note: Location access is required.",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
-          FloatingActionButton(
-            heroTag: "camera",
-            onPressed: () async {
-              // 1. Force the location check FIRST
-              Position? userLocation = await _getMandatoryLocation();
-              
-              // 2. If they denied it, userLocation is null, so we abort.
-              if (userLocation == null) return; 
-
-              try {
-                // Use image_picker for robust mobile web capture with toggle support
-                final XFile? image = await _picker.pickImage(
-                  source: ImageSource.camera,
-                  preferredCameraDevice: _selectedCamera,
-                  maxWidth: 800,
-                  maxHeight: 800,
-                  imageQuality: 70,
-                );
-                
-                if (image != null) {
-                  if (!mounted) return;
-                  await _processImage(image);
-                }
-              } catch (e) {
-                print(e);
-              }
-            },
-            child: const Icon(Icons.camera),
-          ),
-          const SizedBox(height: 16),
-          FloatingActionButton(
-            heroTag: "gallery",
-            onPressed: _pickImage,
-            child: const Icon(Icons.photo_library),
-          ),
-        ],
-      ),
     );
   }
 }

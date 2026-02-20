@@ -3,13 +3,15 @@ import 'package:camera/camera.dart'; // For XFile
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart'; // Import ApiService
 import '../models/local_annotation.dart';
 
 class AnnotationScreen extends StatefulWidget {
   final XFile image;
+  final Position position;
 
-  const AnnotationScreen({super.key, required this.image});
+  const AnnotationScreen({super.key, required this.image, required this.position});
 
   @override
   State<AnnotationScreen> createState() => _AnnotationScreenState();
@@ -99,8 +101,8 @@ class _AnnotationScreenState extends State<AnnotationScreen> {
 
     bool success = await _apiService.submitBatchAnnotations(
       image: widget.image,
-      lat: 40.7128, // TODO: Get real location
-      lon: -74.0060,
+      lat: widget.position.latitude,
+      lon: widget.position.longitude,
       annotationsJson: annotationsJson,
     );
 
