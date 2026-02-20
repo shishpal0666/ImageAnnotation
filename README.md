@@ -1,13 +1,17 @@
 # Image Annotation & Retrieval System
 
-**ImageAnnotation** is a multi-service platform for image annotation and visual search, built with a Flutter front-end, a Node.js API gateway, and a Flask/OpenCV computer-vision backend.
+[Live Website](https://image-annotation-portfolio.web.app/) · [Download APK (v1)](https://drive.google.com/file/d/14pNrvBevYYK2jyiZhaJK4M7xH4Fay8Jx/view?usp=drive_link)
 
-At a high level, the platform lets users:
+## 1. Project Overview
 
-- **Capture or pick an image.**
-- **Add one or multiple annotations** (tap points + text descriptions).
-- **Attach geolocation** to each image.
-- **Search** with a new query image and location to retrieve ranked annotation matches from nearby images.
+**ImageAnnotation** is a multi-service platform for image annotation and visual search. It leverages a Flutter front-end, a Node.js API gateway, and a Flask/OpenCV computer-vision backend to deliver a seamless spatial mapping experience.
+
+At a high level, the platform allows users to:
+
+- **Capture or upload** an image.
+- **Add multiple annotations** (tap points + text descriptions) to specific visual features.
+- **Attach geolocation** automatically to each image.
+- **Visual Search:** Submit a query image and location to retrieve ranked annotation matches from nearby images.
 
 ---
 
@@ -15,10 +19,12 @@ At a high level, the platform lets users:
 
 The system follows a 3-tier service architecture with storage split across MongoDB and a shared usage volume.
 
-- **Presentation Layer**: [FlutterApp](./FlutterApp/README.md) for camera, annotation UI, and results rendering.
-- **API Orchestration Layer**: [NodeGateway](./NodeGateway/README.md) (Node/Express) for upload handling, geospatial filtering, DB I/O, and routing CV requests.
-- **CV Processing Layer**: [FlaskCV](./FlaskCV/README.md) for SIFT feature extraction and KDTree-based matching.
-- **Data Layer**: MongoDB (image/annotation metadata) + Shared Docker volume (`media_data`) for images and tree artifacts.
+| Layer                 | Service                                | Tech Stack            | Responsibilities                                           |
+| :-------------------- | :------------------------------------- | :-------------------- | :--------------------------------------------------------- |
+| **Presentation**      | [FlutterApp](./FlutterApp/README.md)   | Flutter, Dart         | Camera integration, annotation UX, results rendering.      |
+| **API Orchestration** | [NodeGateway](./NodeGateway/README.md) | Node.js, Express      | Upload handling, geospatial filtering, DB I/O, CV routing. |
+| **CV Processing**     | [FlaskCV](./FlaskCV/README.md)         | Python, Flask, OpenCV | SIFT feature extraction, KDTree-based matching.            |
+| **Data Layer**        | MongoDB & Docker                       | MongoDB, Shared Vol   | Image/annotation metadata, shared `media_data` volume.     |
 
 ![Architecture Diagram](./Assets/ImageAnnotationArchitecture.png)
 
@@ -28,124 +34,63 @@ The system follows a 3-tier service architecture with storage split across Mongo
 
 ### Root
 
-- `docker-compose.yml`: Runs `node_gateway`, `flask_cv`, and `flutter_app` containers and defines shared volume `media_data`.
-- `README.md`: This file.
+- `docker-compose.yml`: Orchestrates `node_gateway`, `flask_cv`, and `flutter_app` containers and defines the shared `media_data` volume.
+- `README.md`: Project documentation.
 
-### [NodeGateway/](./NodeGateway/README.md)
+### [NodeGateway](./NodeGateway/README.md)
 
-- `server.js`: Main Express app, routes (`/upload`, `/search`, `/bulk-annotate`), static image hosting, CORS, and Flask integration.
+- `server.js`: Main Express app, API routes (`/upload`, `/search`, `/bulk-annotate`), static image hosting, CORS.
 - `database.js`: MongoDB connection helper.
-- `models/Image.js`: Image metadata schema with geospatial index and `kdTreeId` linkage.
-- `models/Annotation.js`: Annotation schema keyed by `imageId` and `keypointId`.
-- `Dockerfile`, `package.json`, `package-lock.json`.
+- `models/`: Mongoose schemas for `Image` (geospatial index, `kdTreeId`) and `Annotation`.
 
-### [FlaskCV/](./FlaskCV/README.md)
+### [FlaskCV](./FlaskCV/README.md)
 
 - `app.py`: Flask API exposing `/process` and `/search`.
-- `cv_engine.py`: CV primitives (SIFT extraction, nearest keypoint, KDTree persistence, and matching logic).
-- `requirements.txt`, `Dockerfile`.
+- `cv_engine.py`: Core CV primitives (SIFT extraction, KDTree persistence, nearest keypoint matching).
 
-### [FlutterApp/](./FlutterApp/README.md)
+### [FlutterApp](./FlutterApp/README.md)
 
-- `lib/main.dart`: App entry point, home view, camera/search flows, mandatory location gating.
-- `lib/screens/annotation_screen.dart`: Multi-annotation UX and batch submit.
-- `lib/screens/results_screen.dart`: Ranked result list and image display.
-- `lib/services/api_service.dart`: HTTP multipart API client for Node routes.
-- `lib/models/local_annotation.dart`: local annotation DTO.
-- `lib/models/annotation_result.dart`: result DTO and backend response adaptation.
-- Platform scaffolding in `android/`, `ios/`, `web/`, `linux/`, `windows/`, `macos/`.
+- `lib/main.dart`: App entry point, location gating.
+- `lib/screens/`: UI for annotation flows, camera fallback, and ranked results.
+- `lib/services/api_service.dart`: HTTP multipart API client.
 
 ---
 
 ## 4. Service-by-Service Deep Dive
 
-### 4.1 Flutter Front-End ([FlutterApp](./FlutterApp/README.md))
+### 4.1 Flutter Front-End
 
 **Core Responsibilities:**
 
-- Capture/pick images using `camera` and `image_picker`.
-- Collect precise location using `geolocator`.
-- Support two modes:
-  - **Annotation Mode**: User marks points and descriptions.
-  - **Search Mode**: User submits query image + location for match retrieval.
-- Send multipart requests to Node gateway.
+- Capture/pick images using `camera` and `image_picker`, while collecting precise location via `geolocator`.
+- **Annotation Mode:** Users mark points and add descriptions.
+- **Search Mode:** Users submit a query image + location for match retrieval.
+- Send multipart requests to the Node gateway (`/bulk-annotate`, `/upload`, `/search`).
 
-**Main UI/Flow:**
-
-1.  **Home Screen**: Actions for "Add Annotation" and "Search".
-2.  **CameraScreen**: Initializes camera, falls back gracefully, requires location.
-3.  **AnnotationScreen**: Displays image, captures tap coordinates + text, sends via `/bulk-annotate`.
-4.  **ResultsScreen**: Displays ranked matches with scores and loaded images.
-
-**API Integration:**
-
-- `ApiService` support:
-  - `submitBatchAnnotations()` -> `POST /bulk-annotate`
-  - `uploadAnnotation()` -> `POST /upload`
-  - `searchImage()` -> `POST /search`
-- Supports web/non-web file upload handling and configurable `API_BASE_URL`.
-
-### 4.2 Node Gateway ([NodeGateway](./NodeGateway/README.md))
+### 4.2 Node Gateway
 
 **Core Responsibilities:**
 
-- Handle image upload via `multer`.
-- Serve uploaded image files statically through `/uploads`.
-- Persist metadata in MongoDB.
-- Delegate feature extraction/matching to Flask CV service.
-- Aggregate ranked matches with annotation text and image URLs.
+- Handle image uploads via `multer` and serve them statically through `/uploads`.
+- Persist metadata in MongoDB, including GeoJSON points (`[lon, lat]`).
+- Delegate feature extraction and matching to the Flask CV service.
+- Aggregate ranked matches with annotation text and image URLs for the frontend.
 
-**Database Models:**
-
-- **Image**: `filename`, `uploadDate`, `location` (GeoJSON Point `[lon, lat]`), `kdTreeId` (2dsphere geospatial index).
-- **Annotation**: `imageId`, `keypointId`, `description`, `coordinates` (`x`, `y`).
-
-**Key API Endpoints:**
-
-- `POST /upload`: Save image -> Create Image Doc -> Call Flask `/process` -> Save `treeId` -> Save Annotation.
-- `POST /bulk-annotate`: Save image -> Loop annotations -> Call Flask `/process` for each -> Save Annotations -> Save final `treeId`.
-- `POST /search`: Save query image -> Geo-filter candidates (`$near`) -> Extract `kdTreeId`s -> Call Flask `/search` -> Resolve keypoints to Annotations -> Return ranked list with URLs.
-
-### 4.3 Flask CV Service ([FlaskCV](./FlaskCV/README.md))
+### 4.3 Flask CV Service
 
 **Core Responsibilities:**
 
-- Extract visual descriptors from images.
-- Map user tap to nearest keypoint descriptor.
-- Persist/load per-image KDTree artifacts.
-- Search query descriptors against candidate trees.
-
-**Endpoint Behavior:**
-
-- `POST /process`: Loads image -> Extracts SIFT -> Finds nearest keypoint -> Adds to KDTree (`trees/<filename>.pkl`) -> Returns `keypointId` + `treeId`.
-- `POST /search`: Loads query image -> Extracts descriptors (center crop) -> Loads candidate trees -> Runs KDTree NN matching + ratio test -> Returns ranked matches.
-
-**CV/ML Implementation Notes:**
-
-- Uses `opencv-python-headless` + SIFT.
-- Uses `sklearn.neighbors.KDTree` for NN indexing.
-- Uses `joblib` for serialization.
-- Includes basic corrupted-tree recovery.
+- Extract visual SIFT descriptors from images (`opencv-python-headless`).
+- Map user taps to the nearest keypoint descriptor.
+- Persist/load per-image KDTree artifacts using `joblib` and `sklearn.neighbors.KDTree`.
+- Search query descriptors against candidate trees using KDTree NN matching and ratio testing.
 
 ---
 
 ## 5. Data and Storage Architecture
 
-### 5.1 MongoDB Metadata
-
-Stores lightweight metadata and relational links:
-
-- Image records with geospatial coordinates and tree IDs.
-- Annotation records with semantic text and keypoint linkage.
-
-### 5.2 Shared Volume (`media_data`)
-
-Mounted at `/app/uploads` in Node + Flask:
-
-- Uploaded source images.
-- `trees/*.pkl` KDTree artifacts.
-
-_This avoids redundant blob storage duplication and allows both services to read the same artifacts._
+- **MongoDB Metadata:** Stores lightweight metadata and relational links (geospatial coordinates, tree IDs, semantic text, keypoint links).
+- **Shared Volume (`media_data`):** Mounted at `/app/uploads` in both Node and Flask. Stores uploaded source images and `trees/*.pkl` KDTree artifacts. _This avoids redundant blob storage duplication and allows both services to read the same files directly._
 
 ---
 
@@ -154,47 +99,86 @@ _This avoids redundant blob storage duplication and allows both services to read
 ### 6.1 Annotate (Single / Bulk)
 
 1.  **Flutter** sends multipart image + location + annotation points.
-2.  **Node** persists image and metadata.
-3.  **Node** calls **Flask** for descriptor/keypoint processing.
-4.  **Flask** updates KDTree and returns keypoint identity.
-5.  **Node** persists annotations and responds success.
+2.  **Node** persists image and metadata, then calls **Flask** for processing.
+3.  **Flask** extracts SIFT features, updates the KDTree, and returns the keypoint identity.
+4.  **Node** persists the annotations to MongoDB and returns a success response.
 
 ### 6.2 Search
 
-1.  **Flutter** sends query image + current location.
-2.  **Node** geo-filters candidate images in MongoDB (`$near`).
-3.  **Node** passes candidate trees to **Flask**.
-4.  **Flask** computes ranked descriptor matches.
-5.  **Node** maps keypoint IDs to annotations and enriches with image URLs.
-6.  **Flutter** renders ranked descriptions and images.
+1.  **Flutter** sends a query image + current location.
+2.  **Node** geo-filters candidate images in MongoDB using `$near`.
+3.  **Node** passes the candidate tree IDs to **Flask**.
+4.  **Flask** computes ranked descriptor matches and returns them.
+5.  **Node** maps keypoint IDs back to human-readable annotations and enriches them with image URLs.
+6.  **Flutter** renders the ranked descriptions and images for the user.
 
 ---
 
-## 7. Configuration and Deployment
+## 7. Local Development & Getting Started
 
-### 7.1 Docker Compose Services
+Follow these detailed steps to run the entire microservice architecture locally on your machine.
 
-- `node_gateway` on port **3000**
-- `flask_cv` on port **5000**
-- `flutter_app` on port **8080**
+### Prerequisites
 
-### 7.2 Important Environment Variables
+Before you begin, ensure you have the following installed:
 
-- `MONGO_URI`: Node DB connection.
-- `FLASK_API_URL`: Node -> Flask route target.
-- `FRONTEND_URL`: Node CORS allowlist.
-- `BACKEND_PUBLIC_URL`: Base URL used for generated image links.
+- [Docker](https://docs.docker.com/get-docker/) & Docker Compose
+- [Git](https://git-scm.com/)
 
-### 7.3 Networking Pattern
-
-- Flutter talks to Node over HTTP.
-- Node talks to Flask over internal service DNS (`flask_cv`).
-- Node and Flask share the same volume mount path.
-
-## Getting Started
-
-To run the entire system:
+### Step 1: Clone the Repository
 
 ```bash
-docker-compose up --build
+git clone https://github.com/shishpal0666/ImageAnnotation.git
+cd ImageAnnotation
 ```
+
+### Step 2: Configure Environment Variables
+
+Create a `.env` file in the root directory to configure your local variables.
+
+Example `.env` configuration:
+
+```env
+# NodeGateway Config
+MONGO_URI=mongodb://mongo:27017/image_annotation
+FLASK_API_URL=http://flask_cv:5000
+FRONTEND_URL=http://localhost:8080
+BACKEND_PUBLIC_URL=http://localhost:3000
+
+# Flutter Config (if passing via build args)
+API_BASE_URL=http://localhost:3000
+```
+
+### Step 3: Build and Run with Docker Compose
+
+Start the entire stack. Docker will pull the necessary base images, install dependencies for all three layers, and link the networking and volumes.
+
+```bash
+# Build the images and start the containers in detached mode
+docker-compose up --build -d
+```
+
+### Step 4: Access the Application
+
+Once the containers are running, the services will be exposed on the following ports:
+
+- **Flutter Frontend:** `http://localhost:8080`
+- **Node.js API Gateway:** `http://localhost:3000`
+- **Flask CV Service:** Internal to Docker (Port 5000)
+- **MongoDB:** Internal to Docker (Port 27017)
+
+### Step 5: Viewing Logs and Stopping
+
+To view the live logs of your services (useful for debugging CV processing or API routes):
+
+```bash
+docker-compose logs -f
+```
+
+To stop the system and spin down the containers:
+
+```bash
+docker-compose down
+```
+
+> **Note:** Adding the `-v` flag will also wipe the shared `media_data` volume and your MongoDB data.
